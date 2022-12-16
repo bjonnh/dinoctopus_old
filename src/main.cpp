@@ -56,25 +56,58 @@ int controller0=79;
 
 SensorStatus sensorStatus = SensorStatus();
 
+uint16_t tofCB()
+{
+    uint8_t NewDataReady = 0;
+    VL53L4CD_Result_t results;
+    uint8_t status;
+
+    status = sensor_vl53l4cd_sat.VL53L4CD_CheckForDataReady(&NewDataReady);
+
+    if ((!status) && (NewDataReady != 0)) {
+        sensor_vl53l4cd_sat.VL53L4CD_ClearInterrupt();
+        sensor_vl53l4cd_sat.VL53L4CD_GetResult(&results);
+        if (results.range_status==0) {
+            return results.distance_mm;
+        }
+    }
+    return 0;
+}
+
 
 void midiCB() {
     int temp;
     for (auto &sensor: sensorStatus.sensors)  {
         if (sensor.enabled) {
-            temp = analogRead(sensor.pin);
-            if (abs(sensor.previous_value - temp) > 3) {
-                sensor.previous_value = temp;
-                sensorStatus.sensors[0].current_value = temp;
-                if (sensor.controller > 0) {
-                    MIDI.sendControlChange(sensor.controller,
-                                           sensor.correctedValue() >> 3,
-                                           sensor.channel);
+            if(sensor.type == SENSOR_TYPE::ANALOG) {
+                temp = analogRead(sensor.pin);
+                if (abs(sensor.current_value - temp) > 3) {
+                    sensor.current_value = temp;
+                    if (sensor.controller > 0) {
+                        MIDI.sendControlChange(sensor.controller,
+                                               sensor.correctedValue() >> 3,
+                                               sensor.channel);
+                    }
+                }
+            } else if (sensor.type == SENSOR_TYPE::TOF) {
+                temp = tofCB();
+                if (temp > 0) { // We should never have 0 except at init, so we use that the "no response" value
+                    if (abs(sensor.current_value - temp) > 3) {
+                        sensor.current_value = temp;
+                        if (sensor.controller > 0) {
+                            snprintf_P(buffer, sizeof(buffer), PSTR("%5u"),temp);
+                            u8x8.drawString(0,1,buffer);
+                            MIDI.sendControlChange(sensor.controller,
+                                                   sensor.correctedValue() >> 3,
+                                                   sensor.channel);
+                        }
+                    }
                 }
             }
         }
     }
-
 }
+
 /*
 void updateDisplayCB() {
     if (last_message.type==0) return;
@@ -117,11 +150,11 @@ void distancesetup() {
 void setup()
 {
     analogReference(DEFAULT);
-    Sensor sensor = Sensor(true, 0, -1, SENSOR_TYPE::ANALOG);
+    Sensor sensor = Sensor(false, 0, -1, SENSOR_TYPE::ANALOG);
     sensor.controller = 79;
     sensorStatus.setup_sensor(0, &sensor);
-    Sensor sensor_tof = Sensor(true, 1, -1, SENSOR_TYPE::ANALOG);
-    sensor.controller = 78;
+    Sensor sensor_tof = Sensor(true, 1, -1, SENSOR_TYPE::TOF);
+    sensor_tof.controller = 80;
     sensorStatus.setup_sensor(1, &sensor_tof);
     u8x8.begin();
     u8x8.setPowerSave(0);
@@ -134,34 +167,7 @@ void setup()
     distancesetup();
 }
 
-void distanceloop()
-{
-    uint8_t NewDataReady = 0;
-    VL53L4CD_Result_t results;
-    uint8_t status;
-    char report[64];
-
-    //do {
-    status = sensor_vl53l4cd_sat.VL53L4CD_CheckForDataReady(&NewDataReady);
-    //} while (!NewDataReady);
-
-
-    if ((!status) && (NewDataReady != 0)) {
-        // (Mandatory) Clear HW interrupt to restart measurements
-        sensor_vl53l4cd_sat.VL53L4CD_ClearInterrupt();
-
-        // Read measured distance. RangeStatus = 0 means valid data
-        sensor_vl53l4cd_sat.VL53L4CD_GetResult(&results);
-        if (results.range_status==0) {
-            snprintf_P(buffer, sizeof(buffer), PSTR("%5u"),results.distance_mm);
-        }
-        u8x8.drawString(0,1,buffer);
-    }
-
-}
-
 void loop()
 {
    scheduler.execute();
-   distanceloop();
 }

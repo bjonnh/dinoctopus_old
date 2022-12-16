@@ -8,7 +8,7 @@
 
 #include <Arduino.h>
 
-enum SENSOR_TYPE { UNUSED, ANALOG, DIGITAL };
+enum SENSOR_TYPE { UNUSED, ANALOG, DIGITAL, TOF };
 
 class Sensor {
 public:
@@ -34,7 +34,6 @@ public:
     bool enabled;
     int id;
     int current_value;
-    int previous_value = -1;
     int minimum = 0;
     int maximum = 1023;
     int pin = PIN_A0;
