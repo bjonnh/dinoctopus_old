@@ -22,6 +22,9 @@ using namespace midi;
 #include "sensors.h"
 #include "menu.hpp"
 
+#include <Wire.h>
+#include <vl53l4cd_class.h>
+VL53L4CD sensor_vl53l4cd_sat(&Wire, A1);
 
 // lcd pin serial
 // e 10 clk
@@ -102,12 +105,24 @@ Task updateDisplay(10 * TASK_MILLISECOND, -1, &menuCB, &scheduler, true);
 }*/
 
 
+void distancesetup() {
+    Wire.begin();
+    sensor_vl53l4cd_sat.begin();
+    sensor_vl53l4cd_sat.VL53L4CD_Off();
+    sensor_vl53l4cd_sat.InitSensor();
+    sensor_vl53l4cd_sat.VL53L4CD_SetRangeTiming(25, 0);
+    sensor_vl53l4cd_sat.VL53L4CD_StartRanging();
+}
+
 void setup()
 {
     analogReference(DEFAULT);
     Sensor sensor = Sensor(true, 0, -1, SENSOR_TYPE::ANALOG);
     sensor.controller = 79;
     sensorStatus.setup_sensor(0, &sensor);
+    Sensor sensor_tof = Sensor(true, 1, -1, SENSOR_TYPE::ANALOG);
+    sensor.controller = 78;
+    sensorStatus.setup_sensor(1, &sensor_tof);
     u8x8.begin();
     u8x8.setPowerSave(0);
     u8x8.setBusClock(400000);
@@ -116,12 +131,37 @@ void setup()
     MIDI.begin(MIDI_CHANNEL_OMNI);
 
     menuInit(sensorStatus);
+    distancesetup();
 }
 
+void distanceloop()
+{
+    uint8_t NewDataReady = 0;
+    VL53L4CD_Result_t results;
+    uint8_t status;
+    char report[64];
+
+    //do {
+    status = sensor_vl53l4cd_sat.VL53L4CD_CheckForDataReady(&NewDataReady);
+    //} while (!NewDataReady);
+
+
+    if ((!status) && (NewDataReady != 0)) {
+        // (Mandatory) Clear HW interrupt to restart measurements
+        sensor_vl53l4cd_sat.VL53L4CD_ClearInterrupt();
+
+        // Read measured distance. RangeStatus = 0 means valid data
+        sensor_vl53l4cd_sat.VL53L4CD_GetResult(&results);
+        if (results.range_status==0) {
+            snprintf_P(buffer, sizeof(buffer), PSTR("%5u"),results.distance_mm);
+        }
+        u8x8.drawString(0,1,buffer);
+    }
+
+}
 
 void loop()
 {
-   snprintf_P(buffer, sizeof(buffer), PSTR("%d"), sensorStatus.sensors[0].current_value);
-   u8x8.drawString(0,1,buffer);
    scheduler.execute();
+   distanceloop();
 }
