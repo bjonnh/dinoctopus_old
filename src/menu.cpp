@@ -22,6 +22,7 @@
 #define U8_Width 128
 #define U8_Height 64
 #define FONT u8g2_font_5x8_mr
+#define MINI_FONT u8g2_font_3x5im_mr
 
 #define BTN_SEL 4    // Select button
 #define BTN_UP 5 // Up
@@ -94,6 +95,17 @@ result setPin(eventMask e, navNode &nav, prompt &item) {
     return proceed;
 }
 
+
+result soloMode(eventMask e, navNode &nav, prompt &item) {
+    if (e & Menu::enterEvent) {
+        sensorStatusMenu->solo(input);
+    } else if (e & Menu::exitEvent) {
+        sensorStatusMenu->exitSolo();
+    }
+    return proceed;
+}
+
+
 void setCurrentControllerData() {
     displayedInputData.type = sensorStatusMenu->sensors[input].type;
     displayedInputData.enabled = sensorStatusMenu->sensors[input].enabled;
@@ -119,33 +131,38 @@ SELECT(displayedInputData.pin, setPinMenu, "Pin: ", setPin, exitEvent, noStyle,
 CHOOSE(displayedInputData.type, typeMenu, "Type", setType, exitEvent, noStyle,
        VALUE("Expression", SENSOR_TYPE::ANALOG, doNothing, noEvent),
        VALUE("On/Off", SENSOR_TYPE::DIGITAL, doNothing, noEvent),
-       VALUE("TOF", SENSOR_TYPE::TOF, doNothing, noEvent)
-);
+       VALUE("TOF", SENSOR_TYPE::TOF, doNothing, noEvent));
 
 TOGGLE(displayedInputData.enabled, toggleMenu, "Enabled: ", setEnabled, exitEvent, wrapStyle,
        VALUE("On", true, setEnabled, exitEvent),
        VALUE("Off", false, setEnabled, exitEvent))
 
+#define COMMON_SETTINGS FIELD(displayedInputData.value, "Value", "/1023", 0, 1024, 0, 0, doNothing, noEvent, wrapStyle), \
+    FIELD(displayedInputData.channel, "Channel", "", 0, 16, 1, 0, setChannel, enterEvent, wrapStyle), \
+    FIELD(displayedInputData.controller, "Controller", "", 0, 127, 1, 0, setController, enterEvent, wrapStyle), \
+    OP("Set Min", setMinimum, enterEvent), \
+    OP("Set Max", setMaximum, enterEvent)
+
+MENU(soloMenu,"Solo", soloMode,anyEvent,wrapStyle,
+     COMMON_SETTINGS,
+     EXIT("<Back"));
+
 MENU(controllersMenu, "Controllers", doNothing, noEvent, wrapStyle,
      FIELD(input, "Input", "", 0, 16, 1, 0, changeInput, enterEvent, wrapStyle),
+     SUBMENU(soloMenu),
      SUBMENU(toggleMenu),
      SUBMENU(typeMenu),
-     FIELD(displayedInputData.value, "Value", "/1023", 0, 1024, 0, 0, doNothing, noEvent, wrapStyle),
-     FIELD(displayedInputData.channel, "Channel", "", 0, 16, 1, 0, setChannel, enterEvent, wrapStyle),
-     FIELD(displayedInputData.controller, "Controller", "", 0, 127, 1, 0, setController, enterEvent, wrapStyle),
-     OP("Set Min", setMinimum, enterEvent),
-     OP("Set Max", setMaximum, enterEvent),
+     COMMON_SETTINGS,
      SUBMENU(setPinMenu),
-     EXIT("<Back")
-);
+     EXIT("<Back"));
 
 MENU(mainMenu, "DINoctopus v0.01", doNothing, noEvent, wrapStyle,
      SUBMENU(controllersMenu),
-     EXIT("<Back")
-);
+     EXIT("<Back"));
 
 MENU_OUTPUTS(out, MAX_DEPTH,
-             U8G2_OUT(u8g2_lcd, colors, fontX, fontY, offsetX, offsetY, {0, 0, U8_Width / fontX, U8_Height / fontY}),
+             U8G2_OUT(u8g2_lcd, colors, fontX, fontY, offsetX, offsetY,
+                      {0, 0, U8_Width / fontX, U8_Height / fontY}),
              NONE);
 
 ClickEncoder clickEncoder(BTN_UP, BTN_DOWN, BTN_SEL, 4);
@@ -153,42 +170,46 @@ ClickEncoderStream encStream(clickEncoder, 1);
 
 void timerIsr() { clickEncoder.service(); }
 
-result alert(menuOut &o, idleEvent e) {
-    if (e == idling) {
-        o.setCursor(0, 0);
-        o.print("alert test");
-        o.setCursor(0, 1);
-        o.print("[select] to continue...");
-    }
-    return proceed;
-}
-
 NAVROOT(nav, mainMenu, MAX_DEPTH, encStream, out);
 
-result doAlert(eventMask e, prompt &item) {
-    nav.idleOn(alert);
-    return proceed;
-}
+int idleCount = 0;
 
 result idle(menuOut &o, idleEvent e) {
+    int oldValues[16] = {};
+    int controllerValue;
     switch (e) {
         case idleStart:
+            idleCount = 0;
             break;
         case idling:
-            for (int i=0 ; i<=16;i++) {
+            for (int i=0 ; i<16;i++) {
                 u8g2_lcd.setColorIndex(1);
-                u8g2_lcd.drawFrame(8*i, 0, 8, 34);
+                u8g2_lcd.drawFrame(8 * i, 0, 8, 34);
+                if (i<10) {
+                    u8g2_lcd.setCursor(8 * i + 2, 41);
+                } else
+                {
+                    u8g2_lcd.setCursor(8 * i + 1, 41);
+                }
+                u8g2_lcd.setFont(MINI_FONT);
+                u8g2_lcd.print(i);
+
                 if (sensorStatusMenu->sensors[i].enabled) {
-                    u8g2_lcd.setColorIndex(0);
-                    u8g2_lcd.drawBox(8 * i + 1, 1, 6, 32);
-                    u8g2_lcd.setColorIndex(1);
-                    int v = sensorStatusMenu->sensors[i].correctedValue() / 32;
-                    u8g2_lcd.drawBox(8 * i + 1, 33 - v, 6, v);
+                    controllerValue = sensorStatusMenu->sensors[i].correctedValue();
+                    if (oldValues[i] != controllerValue) {
+                        oldValues[i] = controllerValue;
+                        u8g2_lcd.setColorIndex(0);
+                        u8g2_lcd.drawBox(8 * i + 1, 1, 6, 32);
+                        u8g2_lcd.setColorIndex(1);
+                        int v = controllerValue / 32;
+                        u8g2_lcd.drawBox(8 * i + 1, 33 - v, 6, v);
+                    }
                 }
             }
             nav.idleChanged = true;
             break;
         case idleEnd:
+            u8g2_lcd.setFont(FONT);
             break;
     }
     return proceed;

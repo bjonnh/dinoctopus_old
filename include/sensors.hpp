@@ -46,6 +46,7 @@ public:
 class SensorStatus {
 public:
     Sensor sensors[16];
+    bool soloStore[16];
     SensorStatus() {
 
     }
@@ -53,6 +54,20 @@ public:
     void setup_sensor(int id, Sensor *sensor) {
         if ((id<0) | (id>15) | (sensor == nullptr)) return ;
         sensors[id] = *sensor;
+    }
+
+    // Store the sensors enabled status and only enable current one
+    void solo(int id) {
+        for (int i=0; i<16; i++) {
+            soloStore[i] = sensors[i].enabled;
+            sensors[i].enabled = (i == id);
+        }
+    }
+
+    // Restore the sensors enabled status before the solo mode
+    void exitSolo() {
+        for (int i=0; i<16; i++)
+            sensors[i].enabled = soloStore[i];
     }
 };
 
