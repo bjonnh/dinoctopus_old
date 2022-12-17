@@ -10,19 +10,12 @@ using namespace midi;
 
 #include <TaskScheduler.h>
 
-#ifdef U8X8_HAVE_HW_SPI
-#include <SPI.h>
-#endif
-#ifdef U8X8_HAVE_HW_I2C
 #include <Wire.h>
-#endif
 
-#include <menu.h>
-#include "menu.h"
-#include "sensors.h"
+#include "sensors.hpp"
 #include "menu.hpp"
+#include "backlight_led.hpp"
 
-#include <Wire.h>
 #include <vl53l4cd_class.h>
 VL53L4CD sensor_vl53l4cd_sat(&Wire, A1);
 
@@ -46,13 +39,6 @@ U8X8_SSD1306_128X64_NONAME_HW_I2C u8x8(/* reset=*/ U8X8_PIN_NONE);
 
 int counter = 0;
 char buffer[32];
-
-// someone needs a struct
-int analog0 = 0;
-int oldanalog0 = 0;
-int channel0=16;
-int controller0=79;
-
 
 SensorStatus sensorStatus = SensorStatus();
 
@@ -95,8 +81,8 @@ void midiCB() {
                     if (abs(sensor.current_value - temp) > 3) {
                         sensor.current_value = temp;
                         if (sensor.controller > 0) {
-                            snprintf_P(buffer, sizeof(buffer), PSTR("%5u"),temp);
-                            u8x8.drawString(0,1,buffer);
+//                            snprintf_P(buffer, sizeof(buffer), PSTR("%5u"),temp);
+//                            u8x8.drawString(0,1,buffer);
                             MIDI.sendControlChange(sensor.controller,
                                                    sensor.correctedValue() >> 3,
                                                    sensor.channel);
@@ -108,53 +94,25 @@ void midiCB() {
     }
 }
 
-/*
-void updateDisplayCB() {
-    if (last_message.type==0) return;
-    if (current_position >= 13) { memcpy(buffer2, buffer, sizeof(buffer));current_position = -1; }
-    if ((current_position == -1) & newMessage) {
-        newMessage = false;
-        current_position = 0;
-        snprintf_P(buffer, sizeof(buffer), PSTR("C%02x T%02x D%02x%02x"), last_message.channel, last_message.type, last_message.data1, last_message.data2);
-    };
-    if (current_position >=0) {
-        while(buffer[current_position] == buffer2[current_position]) {
-            current_position++;
-            if ((current_position-1)>13) return;
-        }
-        if (buffer[current_position] != buffer2[current_position]) {
-            u8x8.drawGlyph(current_position, 8, buffer[current_position]);
-            current_position++;
-        }
-
-    }
-}*/
-
 Task midiIn(10L, -1, &midiCB, &scheduler, true); // 100us
 Task updateDisplay(10 * TASK_MILLISECOND, -1, &menuCB, &scheduler, true);
-
-/*void handleMessage(const midi::Message<128u> &message) {
-
-}*/
-
+Task updateLed(10 * TASK_MILLISECOND, -1, &setColors, &scheduler, true);
 
 void distancesetup() {
     Wire.begin();
     sensor_vl53l4cd_sat.begin();
     sensor_vl53l4cd_sat.VL53L4CD_Off();
     sensor_vl53l4cd_sat.InitSensor();
-    sensor_vl53l4cd_sat.VL53L4CD_SetRangeTiming(25, 0);
+    sensor_vl53l4cd_sat.VL53L4CD_SetRangeTiming(20, 0);
     sensor_vl53l4cd_sat.VL53L4CD_StartRanging();
 }
 
 void setup()
 {
     analogReference(DEFAULT);
-    Sensor sensor = Sensor(false, 0, -1, SENSOR_TYPE::ANALOG);
-    sensor.controller = 79;
+    Sensor sensor = Sensor(true, 0, SENSOR_TYPE::ANALOG, 80);
     sensorStatus.setup_sensor(0, &sensor);
-    Sensor sensor_tof = Sensor(true, 1, -1, SENSOR_TYPE::TOF);
-    sensor_tof.controller = 80;
+    Sensor sensor_tof = Sensor(true, 0, SENSOR_TYPE::TOF, 81);
     sensorStatus.setup_sensor(1, &sensor_tof);
     u8x8.begin();
     u8x8.setPowerSave(0);
@@ -162,7 +120,7 @@ void setup()
     u8x8.setFont(u8x8_font_chroma48medium8_r);
     u8x8.drawString(0,0,"DINoctopus v0.01");
     MIDI.begin(MIDI_CHANNEL_OMNI);
-
+    initStrip();
     menuInit(sensorStatus);
     distancesetup();
 }

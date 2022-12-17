@@ -8,16 +8,16 @@
 
 #include <Arduino.h>
 
-enum SENSOR_TYPE { UNUSED, ANALOG, DIGITAL, TOF };
+enum SENSOR_TYPE { UNUSED=0, ANALOG=1, DIGITAL=2, TOF=3 };
 
 class Sensor {
 public:
-    Sensor(bool enabled, int id, int currentValue, SENSOR_TYPE type) : enabled(enabled), id(id),
-                                                                       current_value(currentValue), type(type) {}
-    Sensor() : enabled(false), id(-1), current_value(-1), type(SENSOR_TYPE::UNUSED) {};
+    Sensor(bool enabled, int currentValue, SENSOR_TYPE type, int controller) : enabled(enabled), current_value(currentValue),
+                                                                                type(type), controller(controller) {}
+    Sensor() : enabled(false), current_value(-1), type(SENSOR_TYPE::UNUSED), controller(-1) {};
 
-    int correctedValue() {
-        int val = map(current_value,minimum,maximum,0,1024);
+    int correctedValue() const {
+        int val = map(current_value, minimum, maximum, 0, 1024);
         if (val<=0) return 0;
         if (val>=1023) return 1023;
         return val;
@@ -32,20 +32,19 @@ public:
     }
 
     bool enabled;
-    int id;
     int current_value;
     int minimum = 0;
     int maximum = 1023;
     int pin = PIN_A0;
-    int controller = -1;
-    int channel = 16;
     SENSOR_TYPE type;
+    int controller;
+    int channel = 16;
+
 };
 
 
 class SensorStatus {
 public:
-    int n_sensors=16;
     Sensor sensors[16];
     SensorStatus() {
 
