@@ -6,7 +6,9 @@
 #ifndef DINOCTOPUS_PIO_MENU_HPP
 #define DINOCTOPUS_PIO_MENU_HPP
 
-#include "sensors.hpp"
+#include "sensor.hpp"
+#include "sensorstatus.hpp"
+
 void menuCB();
 void menuInit(SensorStatus &sensorStatus);
 

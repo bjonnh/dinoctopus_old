@@ -11,7 +11,8 @@
 #include <TimerOne.h>
 
 #include <U8g2lib.h>
-#include "sensors.hpp"
+#include "sensor.hpp"
+#include "sensorstatus.hpp"
 
 #define MAX_DEPTH 3
 
@@ -61,37 +62,37 @@ result showEvent(eventMask e, navNode &nav, prompt &item) {
 }
 
 result setMinimum(eventMask e, navNode &nav, prompt &item) {
-    sensorStatusMenu->sensors[input].setMinimum();
+    sensorStatusMenu->sensors[input]->setMinimum();
     return proceed;
 }
 
 result setMaximum(eventMask e, navNode &nav, prompt &item) {
-    sensorStatusMenu->sensors[input].setMaximum();
+    sensorStatusMenu->sensors[input]->setMaximum();
     return proceed;
 }
 
 result setType(eventMask e, navNode &nav, prompt &item) {
-    sensorStatusMenu->sensors[input].type = displayedInputData.type;
+    sensorStatusMenu->sensors[input]->type = displayedInputData.type;
     return proceed;
 }
 
 result setEnabled(eventMask e, navNode &nav, prompt &item) {
-    sensorStatusMenu->sensors[input].enabled = displayedInputData.enabled;
+    sensorStatusMenu->sensors[input]->enabled = displayedInputData.enabled;
     return proceed;
 }
 
 result setChannel(eventMask e, navNode &nav, prompt &item) {
-    sensorStatusMenu->sensors[input].channel = displayedInputData.channel;
+    sensorStatusMenu->sensors[input]->set_channel(displayedInputData.channel);
     return proceed;
 }
 
 result setController(eventMask e, navNode &nav, prompt &item) {
-    sensorStatusMenu->sensors[input].controller = displayedInputData.controller;
+    sensorStatusMenu->sensors[input]->set_controller(displayedInputData.controller);
     return proceed;
 }
 
 result setPin(eventMask e, navNode &nav, prompt &item) {
-    sensorStatusMenu->sensors[input].pin = displayedInputData.pin;
+    sensorStatusMenu->sensors[input]->pin = displayedInputData.pin;
     return proceed;
 }
 
@@ -106,32 +107,19 @@ result soloMode(eventMask e, navNode &nav, prompt &item) {
 }
 
 
-void setCurrentControllerData() {
-    displayedInputData.type = sensorStatusMenu->sensors[input].type;
-    displayedInputData.enabled = sensorStatusMenu->sensors[input].enabled;
-    displayedInputData.channel = sensorStatusMenu->sensors[input].channel;
-    displayedInputData.controller = sensorStatusMenu->sensors[input].controller;
-    displayedInputData.pin = sensorStatusMenu->sensors[input].pin;
-}
-
-result changeInput(eventMask e, navNode &nav, prompt &item) {
-    setCurrentControllerData();
-    return proceed;
-}
-
 SELECT(displayedInputData.pin, setPinMenu, "Pin: ", setPin, exitEvent, noStyle,
        VALUE("A0", 54, doNothing, noEvent), VALUE("A1", 55, doNothing, noEvent), VALUE("A2", 56, doNothing, noEvent),
        VALUE("A3", 57, doNothing, noEvent), VALUE("A4", 58, doNothing, noEvent), VALUE("A5", 59, doNothing, noEvent),
        VALUE("A6", 60, doNothing, noEvent), VALUE("A7", 61, doNothing, noEvent), VALUE("A8", 62, doNothing, noEvent),
        VALUE("A9", 63, doNothing, noEvent), VALUE("A10", 64, doNothing, noEvent), VALUE("A11", 65, doNothing, noEvent),
        VALUE("A12", 66, doNothing, noEvent), VALUE("A13", 67, doNothing, noEvent), VALUE("A14", 68, doNothing, noEvent),
-       VALUE("A15", 69, doNothing, noEvent));
+       VALUE("A15", 69, doNothing, noEvent))
 
 
 CHOOSE(displayedInputData.type, typeMenu, "Type", setType, exitEvent, noStyle,
        VALUE("Expression", SENSOR_TYPE::ANALOG, doNothing, noEvent),
        VALUE("On/Off", SENSOR_TYPE::DIGITAL, doNothing, noEvent),
-       VALUE("TOF", SENSOR_TYPE::TOF, doNothing, noEvent));
+       VALUE("TOF", SENSOR_TYPE::TOF, doNothing, noEvent))
 
 TOGGLE(displayedInputData.enabled, toggleMenu, "Enabled: ", setEnabled, exitEvent, wrapStyle,
        VALUE("On", true, setEnabled, exitEvent),
@@ -145,42 +133,51 @@ TOGGLE(displayedInputData.enabled, toggleMenu, "Enabled: ", setEnabled, exitEven
 
 MENU(soloMenu,"Solo", soloMode,anyEvent,wrapStyle,
      COMMON_SETTINGS,
-     EXIT("<Back"));
+     EXIT("<Back"))
+
+void setCurrentControllerData() {
+    displayedInputData.type = sensorStatusMenu->sensors[input]->type;
+    displayedInputData.enabled = sensorStatusMenu->sensors[input]->enabled;
+    displayedInputData.channel = sensorStatusMenu->sensors[input]->get_channel();
+    displayedInputData.controller = sensorStatusMenu->sensors[input]->get_controller();
+    displayedInputData.pin = sensorStatusMenu->sensors[input]->pin;
+}
+
+result changeInput(eventMask e, navNode &nav, prompt &item) {
+    setCurrentControllerData();
+    return proceed;
+}
 
 MENU(controllersMenu, "Controllers", doNothing, noEvent, wrapStyle,
-     FIELD(input, "Input", "", 0, 16, 1, 0, changeInput, enterEvent, wrapStyle),
+     FIELD(input, "Input", "", 0, 15, 1, 0, changeInput, enterEvent, wrapStyle),
      SUBMENU(soloMenu),
      SUBMENU(toggleMenu),
      SUBMENU(typeMenu),
      COMMON_SETTINGS,
      SUBMENU(setPinMenu),
-     EXIT("<Back"));
+     EXIT("<Back"))
 
 MENU(mainMenu, "DINoctopus v0.01", doNothing, noEvent, wrapStyle,
      SUBMENU(controllersMenu),
-     EXIT("<Back"));
+     EXIT("<Back"))
 
 MENU_OUTPUTS(out, MAX_DEPTH,
              U8G2_OUT(u8g2_lcd, colors, fontX, fontY, offsetX, offsetY,
                       {0, 0, U8_Width / fontX, U8_Height / fontY}),
-             NONE);
+             NONE)
 
 ClickEncoder clickEncoder(BTN_UP, BTN_DOWN, BTN_SEL, 4);
 ClickEncoderStream encStream(clickEncoder, 1);
 
 void timerIsr() { clickEncoder.service(); }
 
-NAVROOT(nav, mainMenu, MAX_DEPTH, encStream, out);
-
-int idleCount = 0;
+NAVROOT(nav, mainMenu, MAX_DEPTH, encStream, out)
 
 result idle(menuOut &o, idleEvent e) {
     int oldValues[16] = {};
     int controllerValue;
     switch (e) {
         case idleStart:
-            idleCount = 0;
-            break;
         case idling:
             for (int i=0 ; i<16;i++) {
                 u8g2_lcd.setColorIndex(1);
@@ -192,10 +189,11 @@ result idle(menuOut &o, idleEvent e) {
                     u8g2_lcd.setCursor(8 * i + 1, 41);
                 }
                 u8g2_lcd.setFont(MINI_FONT);
+
                 u8g2_lcd.print(i);
 
-                if (sensorStatusMenu->sensors[i].enabled) {
-                    controllerValue = sensorStatusMenu->sensors[i].correctedValue();
+                if (sensorStatusMenu->sensors[i]->enabled) {
+                    controllerValue = sensorStatusMenu->sensors[i]->correctedValue();
                     if (oldValues[i] != controllerValue) {
                         oldValues[i] = controllerValue;
                         u8g2_lcd.setColorIndex(0);
@@ -238,10 +236,15 @@ void menuInit(SensorStatus &sensorStatus) {
 }
 
 void menuCB() {
-    displayedInputData.value = sensorStatusMenu->sensors[input].correctedValue();
-
+    displayedInputData.value = sensorStatusMenu->sensors[input]->correctedValue();
+    nav.idleOn(idle);
     nav.doInput();
     if (nav.changed(0)) {
+        if (sensorStatusMenu->sensors[input]->type == SENSOR_TYPE::TOF) {
+            controllersMenu[9].disable();
+        } else {
+            controllersMenu[9].enable();
+        }
         u8g2_lcd.firstPage();
         do nav.doOutput(); while (u8g2_lcd.nextPage());
     }
