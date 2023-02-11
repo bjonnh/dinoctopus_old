@@ -233,11 +233,11 @@ void menuInit(SensorStatus &sensorStatus) {
         delay(1);
     }
     setCurrentControllerData();
+    nav.idleOn(idle);
 }
 
 void menuCB() {
     displayedInputData.value = sensorStatusMenu->sensors[input]->correctedValue();
-    nav.idleOn(idle);
     nav.doInput();
     if (nav.changed(0)) {
         if (sensorStatusMenu->sensors[input]->type == SENSOR_TYPE::TOF) {
